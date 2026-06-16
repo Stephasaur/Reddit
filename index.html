@@ -137,11 +137,18 @@
 <div id="feed"><div class="empty">Fetching posts…</div></div>
 
 <script>
+const PROXY = "https://corsproxy.io/?url=";
+
+function proxyUrl(url) {
+  return PROXY + encodeURIComponent(url);
+}
+
+const REDDIT_BASE = "https://www.reddit.com/search.json";
 const FEEDS = [
-  { url: "https://www.reddit.com/search.json?q=author%3A%28iwatchstarwars%29&type=comment&sort=new&limit=25",  type: "comment", user: "iwatchstarwars" },
-  { url: "https://www.reddit.com/search.json?q=author%3A%28iwatchstarwars%29&type=link&sort=new&limit=25",    type: "post",    user: "iwatchstarwars" },
-  { url: "https://www.reddit.com/search.json?q=author%3A%28mandalorianwookie89%29&type=comment&sort=new&limit=25", type: "comment", user: "mandalorianwookie89" },
-  { url: "https://www.reddit.com/search.json?q=author%3A%28mandalorianwookie89%29&type=link&sort=new&limit=25",   type: "post",    user: "mandalorianwookie89" },
+  { url: proxyUrl(`${REDDIT_BASE}?q=author%3A%28iwatchstarwars%29&type=comment&sort=new&limit=25`),  type: "comment", user: "iwatchstarwars" },
+  { url: proxyUrl(`${REDDIT_BASE}?q=author%3A%28iwatchstarwars%29&type=link&sort=new&limit=25`),    type: "post",    user: "iwatchstarwars" },
+  { url: proxyUrl(`${REDDIT_BASE}?q=author%3A%28mandalorianwookie89%29&type=comment&sort=new&limit=25`), type: "comment", user: "mandalorianwookie89" },
+  { url: proxyUrl(`${REDDIT_BASE}?q=author%3A%28mandalorianwookie89%29&type=link&sort=new&limit=25`),   type: "post",    user: "mandalorianwookie89" },
 ];
 
 const REFRESH_INTERVAL = 3 * 60; // seconds
@@ -196,7 +203,7 @@ function escHtml(str) {
 }
 
 async function fetchFeed(feed) {
-  const res = await fetch(feed.url, { headers: { Accept: "application/json" } });
+  const res = await fetch(feed.url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   return (json?.data?.children || []).map(c => ({
