@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reddit Feed</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d0d0d;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    header {
+      max-width: 720px;
+      margin: 0 auto 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.01em;
+    }
+
+    #status {
+      font-size: 0.78rem;
+      color: #666;
+    }
+
+    #status.loading { color: #f0a500; }
+    #status.error   { color: #e05252; }
+    #status.ok      { color: #4caf50; }
+
+    #countdown {
+      font-size: 0.78rem;
+      color: #444;
+    }
+
+    #feed {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 14px 16px;
+      transition: border-color 0.15s;
+    }
+
+    .card:hover { border-color: #444; }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .badge-post    { background: #1e3a5f; color: #6ab0f5; }
+    .badge-comment { background: #2a1e3a; color: #b06af5; }
+
+    .subreddit {
+      font-size: 0.8rem;
+      color: #888;
+      font-weight: 500;
+    }
+
+    .author {
+      font-size: 0.78rem;
+      color: #555;
+      margin-left: auto;
+    }
+
+    .title {
+      font-size: 0.93rem;
+      font-weight: 500;
+      color: #ddd;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .title a:hover { color: #fff; text-decoration: underline; }
+
+    .card-bottom {
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .empty {
+      text-align: center;
+      color: #444;
+      padding: 60px 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Reddit Activity Feed</h1>
+  <div style="display:flex;gap:16px;align-items:center;">
+    <span id="status">Loading…</span>
+    <span id="countdown"></span>
+  </div>
+</header>
+
+<div id="feed"><div class="empty">Fetching posts…</div></div>
+
+<script>
+const FEEDS = [
+  { url: "https://www.reddit.com/search.json?q=author%3A%28iwatchstarwars%29&type=comment&sort=new&limit=25",  type: "comment", user: "iwatchstarwars" },
+  { url: "https://www.reddit.com/search.json?q=author%3A%28iwatchstarwars%29&type=link&sort=new&limit=25",    type: "post",    user: "iwatchstarwars" },
+  { url: "https://www.reddit.com/search.json?q=author%3A%28mandalorianwookie89%29&type=comment&sort=new&limit=25", type: "comment", user: "mandalorianwookie89" },
+  { url: "https://www.reddit.com/search.json?q=author%3A%28mandalorianwookie89%29&type=link&sort=new&limit=25",   type: "post",    user: "mandalorianwookie89" },
+];
+
+const REFRESH_INTERVAL = 3 * 60; // seconds
+
+let secondsLeft = REFRESH_INTERVAL;
+let countdownTimer;
+
+function timeAgo(utcSeconds) {
+  const diff = Math.floor(Date.now() / 1000) - utcSeconds;
+  if (diff < 60)   return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = cls || "";
+}
+
+function renderFeed(items) {
+  const feed = document.getElementById("feed");
+  if (!items.length) {
+    feed.innerHTML = '<div class="empty">No recent activity found.</div>';
+    return;
+  }
+
+  feed.innerHTML = items.map(item => {
+    const isPost = item.type === "post";
+    const badgeClass = isPost ? "badge-post" : "badge-comment";
+    const badgeLabel = isPost ? "Post" : "Comment";
+    const link = `https://www.reddit.com${item.permalink}`;
+    const title = item.title || item.body_preview || "(no content)";
+
+    return `
+      <div class="card">
+        <div class="card-top">
+          <span class="badge ${badgeClass}">${badgeLabel}</span>
+          <span class="subreddit">r/${item.subreddit}</span>
+          <span class="author">u/${item.author}</span>
+        </div>
+        <div class="title"><a href="${link}" target="_blank" rel="noopener">${escHtml(title)}</a></div>
+        <div class="card-bottom">${timeAgo(item.created_utc)}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+async function fetchFeed(feed) {
+  const res = await fetch(feed.url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json?.data?.children || []).map(c => ({
+    type:        feed.type,
+    author:      c.data.author,
+    subreddit:   c.data.subreddit,
+    title:       c.data.link_title || c.data.title || c.data.body?.slice(0, 120),
+    body_preview: c.data.body?.slice(0, 120),
+    permalink:   c.data.permalink,
+    created_utc: c.data.created_utc,
+  }));
+}
+
+async function refresh() {
+  setStatus("Refreshing…", "loading");
+  try {
+    const results = await Promise.allSettled(FEEDS.map(fetchFeed));
+    const items = results
+      .filter(r => r.status === "fulfilled")
+      .flatMap(r => r.value);
+
+    const errors = results.filter(r => r.status === "rejected");
+
+    // deduplicate by permalink
+    const seen = new Set();
+    const unique = items.filter(i => {
+      if (seen.has(i.permalink)) return false;
+      seen.add(i.permalink);
+      return true;
+    });
+
+    unique.sort((a, b) => b.created_utc - a.created_utc);
+    renderFeed(unique);
+
+    if (errors.length) {
+      setStatus(`Updated · ${errors.length} feed(s) failed`, "error");
+    } else {
+      setStatus(`Updated ${new Date().toLocaleTimeString()}`, "ok");
+    }
+  } catch (e) {
+    setStatus("Error loading feeds", "error");
+    console.error(e);
+  }
+
+  startCountdown();
+}
+
+function startCountdown() {
+  clearInterval(countdownTimer);
+  secondsLeft = REFRESH_INTERVAL;
+
+  const el = document.getElementById("countdown");
+  el.textContent = `Refreshes in ${secondsLeft}s`;
+
+  countdownTimer = setInterval(() => {
+    secondsLeft--;
+    if (secondsLeft <= 0) {
+      clearInterval(countdownTimer);
+      el.textContent = "Refreshing…";
+      refresh();
+    } else {
+      const m = Math.floor(secondsLeft / 60);
+      const s = secondsLeft % 60;
+      el.textContent = m > 0
+        ? `Refreshes in ${m}m ${s}s`
+        : `Refreshes in ${s}s`;
+    }
+  }, 1000);
+}
+
+refresh();
+</script>
+</body>
+</html>
